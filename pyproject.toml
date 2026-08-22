@@ -1,7 +1,7 @@
 [project]
 name = "redsho"
-version = "0.1.0"
-description = "robust evolutionary direction set hyperparameter optimizer"
+version = "0.1.1"
+description = "Robust evolutionary direction set hyperparameter optimizer"
 readme = "README.md"
 authors = [
     { name = "Brandon Rohrer", email = "brohrer@gmail.com" }
