@@ -131,7 +131,7 @@ class Redsho:
                     pass
 
             # No parents to consider just yet.
-            if len(error_list) < 2:
+            if len(error_list) < 2 or n_parents < 1:
                 return None
 
             errors = np.array(error_list)
@@ -147,8 +147,10 @@ class Redsho:
             # The highest error
             # will have a selection_weight of 0. An error halfway in between will
             # have a selection_weight of .5**2 = .25
+            eps = 1e-17  # to avoid division by zero
             selection_weights = (
-                (np.max(errors) - errors) / (np.max(errors) - np.min(errors))
+                (np.max(errors) - errors)
+                / (np.max(errors) - np.min(errors) + eps)
             ) ** 2
 
             for _ in range(n_parents):
@@ -157,9 +159,9 @@ class Redsho:
                 )[0][0]
                 chosen_selection_weight = selection_weights[i_selection_weight]
 
-                i_cond = np.where(
-                    selection_weights == chosen_selection_weight
-                )[0][0]
+                i_cond = np.where(selection_weights == chosen_selection_weight)[
+                    0
+                ][0]
 
                 if i_cond.size > 1:
                     i_cond = np.random.choice(i_cond)

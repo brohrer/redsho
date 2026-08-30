@@ -22,7 +22,7 @@ def optimizer():
 
     try:
         shutil.rmtree(REPORT_DIR_NAME)
-    except OSError as e:
+    except OSError:
         print("test had difficulty deleting test reports")
 
 
@@ -38,7 +38,7 @@ def parallel_optimizer():
 
     try:
         shutil.rmtree(REPORT_DIR_NAME)
-    except OSError as e:
+    except OSError:
         print("test had difficulty deleting test reports")
 
 
@@ -65,9 +65,7 @@ def test_redsho_optimization(optimizer):
         "y": list(np.linspace(0, np.pi, 10)),
     }
 
-    best_error, best_condition, results_logfile = optimizer.optimize(
-        evaluate, conditions
-    )
+    best_error, best_condition, _ = optimizer.optimize(evaluate, conditions)
 
     assert isinstance(best_error, np.float64)
     assert isinstance(best_condition["x"], np.float64)
@@ -83,7 +81,7 @@ def test_redsho_parallel_optimization(parallel_optimizer):
         "y": list(np.linspace(0, np.pi, 10)),
     }
 
-    best_error, best_condition, results_logfile = parallel_optimizer.optimize(
+    best_error, best_condition, _ = parallel_optimizer.optimize(
         evaluate, conditions
     )
 
@@ -93,4 +91,3 @@ def test_redsho_parallel_optimization(parallel_optimizer):
     assert -1 <= best_error <= 1
     assert 0 <= best_condition["x"] <= np.pi
     assert 0 <= best_condition["y"] <= np.pi
-
