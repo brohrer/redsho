@@ -1,9 +1,9 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import toolbox as tb
 from matplotlib import cm
 
 from redsho.optimizer import Redsho
+from redsho.utils import results_csv_to_dict_list
 
 plt.switch_backend("agg")
 
@@ -49,7 +49,7 @@ def visualize(results_logfile):
     way to the bottom of a well. It's easier to visualize well and
     a bit more cheerful.
     """
-    results = tb.results_csv_to_dict_list(results_logfile)
+    results = utils.results_csv_to_dict_list(results_logfile)
     x = []
     y = []
     z = []

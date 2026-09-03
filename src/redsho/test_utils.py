@@ -1,4 +1,4 @@
-from redsho.toolbox import get_random_condition, grid_expand
+from redsho.utils import get_random_condition, grid_expand
 
 
 def test_grid_expand():
@@ -16,3 +16,4 @@ def test_get_random_condition():
     assert len(rand_condition) == 2
     assert rand_condition["c1"] in conditions["c1"]
     assert rand_condition["c2"] in conditions["c2"]
+

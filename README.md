@@ -48,6 +48,40 @@ In a python script
 import redsho.demo
 ```
 
+## Usage
+
+Start with an evaluation function that takes some hyperparameters as
+keyword arguments.
+
+```
+def evaluate(a=None, b=None, c=None):
+    return a * b**3 % c
+```
+
+and a collection of values to try for each
+
+```
+values = {
+    "a": [4, 7, 9],
+    "b": [2, 5, 6],
+    "c": [5, 8, 11],
+}
+```
+
+call the optimizer
+
+```
+from redsho.optimizer import Redsho
+
+optimizer = Redsho()
+error, best_values, report_filename = optimizer.optimize(evaluate, values)
+```
+
+where `error` is the lowest error achieved, `best_values` is the collection
+of values that achieved it, and `report_filename` is the location of the
+`.csv` documenting each of the trials along the way.
+
+
 ## Parallelization
 
 Redsho can seamlessly take advantage of multiple processor systems.
