@@ -1,11 +1,11 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib import cm
 
-from redsho.optimizer import Redsho
-from redsho.utils import results_csv_to_dict_list
+# from matplotlib import cm
 
 plt.switch_backend("agg")
+
+from redsho.optimizer import optimize
 
 
 def main():
@@ -21,16 +21,7 @@ def main():
     }
 
     # Choose your optimization algorithm and run its optimize() method.
-    optimizer = Redsho(verbose=False)
-    _, _, results_logfile = optimizer.optimize(evaluate, conditions)
-
-    print(
-        "All done! The data on each condition evaluated, and its error\n"
-        + f"are stored in {results_logfile}."
-    )
-
-    # Optionally, when you're done you can turn the results into an image.
-    visualize(results_logfile)
+    _, _ = optimize(evaluate, conditions)
 
 
 def evaluate(x=0, y=0):
@@ -42,6 +33,7 @@ def evaluate(x=0, y=0):
     return -np.sinc(x - x0) * np.sinc(y - y0)
 
 
+'''
 def visualize(results_logfile):
     """
     The error is multiplied by -1 here, so that it looks like the
@@ -49,7 +41,7 @@ def visualize(results_logfile):
     way to the bottom of a well. It's easier to visualize well and
     a bit more cheerful.
     """
-    results = utils.results_csv_to_dict_list(results_logfile)
+    results = results_csv_to_dict_list(results_logfile)
     x = []
     y = []
     z = []
@@ -144,6 +136,7 @@ def visualize(results_logfile):
     plt.close()
 
     print(f"There's also a 3D visualization of it in {viz_file}.")
+'''
 
 
 main()

@@ -32,14 +32,6 @@ or as part of a uv environment
 uv add redsho
 ```
 
-If you want to experiment with tweaking the algorithm, clone the repository
-to your local machine and install it from there.
-
-```bash
-git clone https://codeberg.org/brohrer/redsho.git
-python3 -m pip install -e redsho
-```
-
 ## Run the demo
 
 In a python script
@@ -53,14 +45,14 @@ import redsho.demo
 Start with an evaluation function that takes some hyperparameters as
 keyword arguments.
 
-```
+```python3
 def evaluate(a=None, b=None, c=None):
     return a * b**3 % c
 ```
 
 and a collection of values to try for each
 
-```
+```python3
 values = {
     "a": [4, 7, 9],
     "b": [2, 5, 6],
@@ -70,31 +62,89 @@ values = {
 
 call the optimizer
 
-```
-from redsho.optimizer import Redsho
+```python3
+from redsho.optimizer import optimize
 
-optimizer = Redsho()
-error, best_values, report_filename = optimizer.optimize(evaluate, values)
+lowest_error, best_parameters = optimize(evaluate, values)
 ```
 
-where `error` is the lowest error achieved, `best_values` is the collection
-of values that achieved it, and `report_filename` is the location of the
-`.csv` documenting each of the trials along the way.
+where `error` is the lowest error achieved, `best_parameters` is the collection
+of parameter values that achieved iti
 
 
 ## Parallelization
 
 Redsho can seamlessly take advantage of multiple processor systems.
-Instead of 
+Use the `n_processors` argument to stipulate how many parallel processes
+to run at once. Heads up - choosing a number that's too high will bog down
+your machine. What constitutes "too high" varies by machine and optimization
+problem, so experiment a bit.
 
-```python
-from redsho.optimizer import Redsho
+```python3
+lowest_error, best_parameters = optimize(evaluate, values, n_processors=7)
 ```
 
-try
 
-```python
-from redsho.parallel_optimizer import ParallelRedsho
-```
+### Some terminology
+- REDSHO: robust evolutionary direction set hyperparameter optimizer
+- robust: it doesn't assume smoothness or continutiy
+- evolutionary: it randomly explores new options based on the most
+    successful of its previous tries.
+- direction set: it alternates through its hyperparameters, exploring
+    by varying one at a time
+- hyperparameter: in this context, any variable that has an influence
+    on the result of the evaluation function. Also referred to as
+    a direction or a dimension.
+- hyperparameter space: if each hyperparameter is a direction, then
+    taken together, n hyperparameters form an n-dimensional space
+- condition: a full collection of hyperparameter names and one valid value
+    for each. Each condition is a point in the hyperparameter space.
+- condition grid: the set of all conditions in the hyperparameter space
+    forms an irregular n-dimensional grid.
+- evaluation function: pretty much anything that can take in a set of
+    parameters and return a number that evaluates its performance.
+    It can be a mathematical expression, a traditional machine learning
+    model, an arbitrary chunk of Python code, whatever.
+- error: the result, after a condition has been evaluated.
+    Also called the "loss" is the context of machine learning.
+    Lower is always better. (If you have a "higher is better" evaluator
+    just slap a negative sign on it.) The algorithm
+    is trying to find the condition with the lowest error.
+- error landscape: picturing a two-dimensional hyperparameter space,
+    the error can be imagined as the height of a mountainous landscape
+    in the space. This can be generalized to higher dimensions (but harder
+    to picture in your head).The goal of the algorithm is to find the bottom
+    of the lowest valley.
+- parent: a condition chosen as a point from which to select the next
+    generation of conditions to evaluate. The fact that this is
+    a direction set method means that one of the parent's parameters
+    will be varied in to find candidates.
+- child: conditions chosen based on a parent are its children.
 
-It automatically recruits all your processors (but one) to do its bidding.
+### Assumptions
+- assumes the evaluator is deterministic, that it will give the
+    same answer every time for the same set of hyperparameters. If this
+    is not the case for your application you can approximate a stochastic
+    solution by running it several times and looking for a grouping in
+    the solutions found.
+- assumes discrete valued parameters. Even if parameters are continuous,
+    the way you feed them in forces you to choose a handful of specific
+    values to try.
+
+### Non-assumptions
+- does not assume that the error landscape is smooth or continuous.
+    As a result, redsho often takes more iterations to find
+    an optimimal combination than fancier methods that that assume
+    smoothness, like Bayesian or Gradient-based hyperparameter optimization.
+    But it usually takes fewer samples than random or exhaustive grid search.
+    (See https://en.wikipedia.org/wiki/Hyperparameter_optimization )
+- does not assume that hyperparameter values are numerical.
+    This opens up Redsho to handling categorical arguments, such as
+    booleans or strings. It can also be used with string arguments
+    for a Python function, or even whole functions or classes.
+    Any valid Python object can be used as a hyperparameter value.
+    This is helpful when evaluating models that have options such as
+    `method` which can be assigned any one of several strings or
+    arguments that accept functions, similar to how to
+    SciPy's `optimize.minimize` does.
+

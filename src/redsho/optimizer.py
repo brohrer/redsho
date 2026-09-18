@@ -1,77 +1,96 @@
-import copy
-import os
-from multiprocessing import (
-    Pool,
-    pool.AsyncResult as AsyncResult,
+"""
+Implementation of the Redsho algorithm for finding the best performing
+combination of parameters for an arbitrary evaluation function.
+Built to help find good hyperparameter sets for machine learning models.
+"""
 
-from typing import Callable
+from collections.abc import Callable, Iterator
+import copy
+from multiprocessing import Pool
+import os
+import random
+from typing import Any
 
 import numpy as np
 
-import redsho.reporting as rep
-
-# The type describing a condition, a collection of hyperparameters
-# and their values. Values can be really be any type at all.
-# A condition set includes a list of valid values for each hyperparameter.
-# The full set of conditions can be created combinatorially, with each
-# possible combination of valid values.
-# Whereas a condition list is a straightforward list of individual conditions.
-type Cond = dict[str, Any]
-type CondSet = dict[str, list[Any]]
-type CondList = list[Cond]
+from redsho.helpers.equals import contains_condition
+from redsho.helpers.helpers import (
+    Cond,
+    CondGrid,
+    CondList,
+    get_random_condition,
+    low_biased_choice,
+)
+from redsho.helpers.reports import (
+    condition_list_to_csv,
+    progress_report,
+)
 
 
 def optimize(
-    conditions: CondSet,
+    condition_grid: CondGrid,
     evaluate: Callable[[Cond], float],
-    n_iter: int = int(1e8),
-    parallel: bool = False,
-    n_proc: int = os.cpu_count() - 1,
+    n_iter: int = int(1e3),
+    n_processors: int = 1,
     report_dir: str = "reports",
-    report_filename: str =  "optimizer_results.csv",
+    report_filename: str = "optimizer_results.csv",
     report_plot_filename: str = "optimizer_results.png",
     verbose: bool = True,
 ) -> tuple[float, Cond]:
     """
-    `conditions`: dict where
-        each key is a condition_name and
-        each value is a list of valid condition values
-    Values can be any type.
-
-    `evaluate`: function that takes keyword arguments,
-    one for each key in the `conditions` dict.
-
-    `n_iter`: the number of hyperparameter combinations (conditions)
-    to try before giving up. By default this is a lare number and
-    will likely result in an exhaustive grid search. Bring it down
-    lower if you don't feel like waiting that long.
-
-    `parallel`: flag for whether to run multiple optimization runs at once.
-    Same as `optimize(), but faster because it runs several variants
-    at the same time on different processors.
-
-    The top-level implementation of Redsho.
-    It's main purpose is to support
-    the `optimize()` function, which does all the work.
-
     Calling `optimize()` searches through possible combinations of
     the hyperparameters and tries to find the best-performing
     (lowest error) combination.
-    It does not assume that the error landscape is smooth or continuous.
-    It takes more samples to find an optimimal combination than fancier
-    methods that do makd these assumptions, like Bayesian or
-    Gradient-based hyperparameter optimization.
-    But it usually takes fewer samples than random or exhaustive grid search.
-    (See https://en.wikipedia.org/wiki/Hyperparameter_optimization )
 
-    Robust: it doesn't assume smoothness or continutiy
+    `condition_grid`: a description the entire condition space, expressed
+        as a dict where each key is a condition_name and
+        each value is a list of valid condition values.
 
-    Evolutionary: it randomly explores new options based on the most
-        successful of its previous tries.
+    `evaluate`: function that takes keyword arguments,
+        one for each key in the `conditions` dict.
 
-    Direction Set: It alternates through its hyperparameters, exploring in
-    one "direction" (hyperparameter) at a time.
+    `n_iter`: the number of conditions to evaluate before giving up.
+        By default this is a large number and
+        will likely result in an exhaustive grid search. Bring it down
+        lower if you don't feel like waiting that long.
+
+    `n_processors`: the number of processors to recruit for running
+       multiple condition evaluations in parallel.
+       `n_processors = 1` (default) will keep everything running serially
+       on one processor. Limited to the total number of CPU cores on the
+       machine, minus one, in order to avoid freezing things up.
+
     """
+    # Make sure the inputs are valid
+    assert isinstance(condition_grid, dict), (
+        "First argument must be a condition grid, "
+        + "a dict with items of the form\n"
+        + "    { <parameter_name>: <list of allowable parameter values>, }"
+    )
+    assert len(condition_grid) > 1, (
+        "First argument must have at least one item. "
+        + "There needs to be at least one parameter to optimize over."
+    )
+    for k, v in condition_grid.items():
+        assert isinstance(k, str), "Parameter names must be strings."
+        assert isinstance(v, list), (
+            "Allowable parameter values must be in a list."
+        )
+        assert len(v) > 0, (
+            "Each parameter must have at least one allowable value."
+        )
+
+    # Check that `evaluate` is a function
+    assert callable(evaluate), (
+        "The second argument must be a function. "
+        + "It takes a set of parameters and returns a float."
+    )
+
+    n_iter = int(n_iter)
+    assert isinstance(n_iter, int), "n_iter must be an int."
+    n_processors = int(n_processors)
+    assert isinstance(n_processors, int), "n_processors must be an int."
+
     report_path: str = os.path.join(report_dir, report_filename)
     report_plot_path: str = os.path.join(report_dir, report_plot_filename)
 
@@ -87,19 +106,40 @@ def optimize(
         print(f"    in {report_path}")
         print()
 
-    if parallel:
-        best_error, best_condition = _optimization_loop_parallel(
-            conditions,
+    # Determine the number of logical cores available. This is
+    # typically twice the number of physical cores.
+    # start from.
+    # This expression first checks for the number of cores that this
+    # process has permission to access. (This function only became
+    # available in Python 3.13.)
+    # If that fails or returns None, checks for the total number of cores.
+    # If that returns None, falls back to a safe value (1).
+    try:
+        n_logical_cores = (
+            os.process_cpu_count()  # type: ignore
+            or os.cpu_count()
+            or 1
+        )
+    except AttributeError:
+        n_logical_cores = os.cpu_count() or 1
+
+    # Maxes out at one less than the number of cores to keep from
+    # bogging down the other programs running on the machine.
+    n_processors = min(max(n_processors, 1), n_logical_cores - 1)
+
+    if n_processors > 1:
+        best_error, best_condition = optimization_loop_parallel(
+            condition_grid,
             evaluate,
             n_iter,
-            n_proc,
+            n_processors,
             report_path,
             report_plot_path,
             verbose,
-        ):
+        )
     else:
-        best_error, best_condition = _opimization_loop(
-            conditions,
+        best_error, best_condition = optimization_loop(
+            condition_grid,
             evaluate,
             n_iter,
             report_path,
@@ -110,8 +150,8 @@ def optimize(
     return best_error, best_condition
 
 
-def __optimization_loop(
-    conditions: CondSet,
+def optimization_loop(
+    condition_grid: CondGrid,
     evaluate: Callable[[Cond], float],
     n_iter: int,
     report_path: str,
@@ -122,35 +162,234 @@ def __optimization_loop(
     Cycle through candidate options and keep track of the best error
     seen so far.
 
-    Keep going until `_generate_conditions()` runs out of candidates or
+    Keep going until `generate_conditions()` runs out of candidates or
     until the user forcibly stops the run.
     """
-    best_error: int = int(1e10)
-    best_condition: Cond | None = None
-    condition_history: CondList = []
-    for condition: Cond in _generate_conditions(conditions, n_iter):
+    best_error: float = 1e10
+    best_condition: Cond = {}
+
+    # `conditions` will be the data structure for keeping track of which
+    # conditions have been chosen, which have been evaluated, and what
+    # their error values are. It is a growing list of individual conditions
+    # `i_next_up` is the index of the condition that needs to be evaluated.
+    # Once a condition has been evaluated, it gets a new key added, `error`,
+    # with its attendant float-valued result.
+    #
+    # `conditions` gets intentionally passed around by reference so that
+    # every function can write to it and make changes. This is a little
+    # messy, and adds some cognitive burden when trying to chase it through
+    # the code, but I felt like it was simpler overall than wrapping
+    # these all in a class and more aestheically pleasing than clumsily
+    # declaring it global.
+    conditions: CondList = []
+
+    for i_condition in generate_conditions(conditions, condition_grid, n_iter):
+        condition: Cond = conditions[i_condition]
         if verbose:
             print("    Evaluating condition", condition)
-        error: float = evaluate(**condition)
+        error: float = evaluate(condition)
         condition["error"] = error
-        condition_history.append(condition)
-        rep.results_dict_list_to_csv(condition_history, report_path)
 
         # Keep track of the best-so-far answer.
         if error < best_error:
             best_error = error
             best_condition = condition
         if verbose:
-            results_so_far = rep.results_csv_to_dict_list(report_path)
-            rep.progress_report(results_so_far, report_plot_path)
+            progress_report(conditions, report_plot_path)
 
-    results_so_far = rep.results_csv_to_dict_list(report_path)
-    rep.progress_report(results_so_far, report_plot_path)
+        condition_list_to_csv(conditions, report_path)
+
+    progress_report(conditions, report_plot_path)
     return best_error, best_condition
 
 
-def _optimization_loop_parallel(
-    conditions: CondSet,
+def generate_conditions(
+    conditions: CondList,
+    condition_grid: CondGrid,
+    n_iter: int,
+) -> Iterator[int]:
+    """
+    Core logic for the optimizer.
+    Decide which combination of values to try next.
+    Selection is random, but weighted heavily toward the most successful
+    conditions seen so far.
+    New conditions are generated until either
+        - `n_iter`, the maximum number of iterations is reached
+        - all possibile combinations of valid hyperparameters have been tried
+        - or the user forcibly stops the run.
+
+    One hyperparameter (direction) is explored at a time.
+    The order in which the hyperparameters are explored (the direction set)
+    is random.
+    """
+    # Before starting in, how many random points to check.
+    # Randomly seeding a few of these across the hyperparameter space
+    # helps prevent getting stuck in a "bad luck" initial condition.
+    n_initial_random_conditions: int = len(condition_grid)
+    for _ in range(n_initial_random_conditions):
+        new_condition = get_random_condition(condition_grid)
+        if new_condition not in conditions:
+            conditions.append(new_condition)
+
+    for i_condition in range(n_iter):
+        # If the hopper has run out of candidates, collect a few more.
+        if len(conditions) <= i_condition:
+            try:
+                choose_more_conditions(conditions, condition_grid)
+            except StopIteration:
+                break
+
+        yield i_condition
+
+
+def choose_more_conditions(
+    conditions: CondList,
+    condition_grid: CondGrid,
+    n_conditions_to_add: int = 3,
+) -> None:
+    """
+    Once the conditions list runs out of new conditions to evaluate
+    this method repopulates it.
+
+    `n_conditions_to_add` is the number of new conditions that the algorithm
+    aims to add to the list. It might fall short of this, and that's OK,
+    but it won't exceed this. This is a hyperparameter that helps
+    control how Redsho works, but it's not exposed. It's not expected
+    to affect the result in an important way.
+    """
+
+    # How many parent conditions to try finding children for (and fail)
+    # before declaring the parameter space sufficiently explored.
+    # Because an exhaustive list of conditions is never generated,
+    # there's no way for the algorithm to be certain when it has explored
+    # it completely. This number of attempts is intended to establish
+    # with reasonable confidence that the space is reasonably well explored.
+    n_parents_to_try: int = len(condition_grid)
+
+    parents: CondList = choose_parents(conditions, n_parents_to_try)
+
+    # Handle the case where things are still getting started
+    # and there aren't enough evaluated points to choose parents.
+    if len(parents[0]) == 0:
+        for _ in range(n_parents_to_try):
+            new_condition = get_random_condition(condition_grid)
+            if new_condition not in conditions:
+                conditions.append(new_condition)
+        return
+
+    for parent in parents:
+        condition_names: list[str] = list(condition_grid.keys())
+        np.random.shuffle(condition_names)
+        for condition_name in condition_names:
+            success: bool = choose_children(
+                conditions,
+                condition_grid,
+                parent,
+                condition_name,
+                n_children_max=n_conditions_to_add,
+            )
+            if success:
+                return
+    # If it gets this far it means that there are no lines radiating
+    # from any of the parents that haven't yet been explored.
+    # The algorithm is done.
+    raise StopIteration
+
+
+def choose_parents(
+    conditions: CondList,
+    n_parents: int,
+    greediness: float = 2.0,
+) -> CondList:
+    """
+    Select which previously evaluated parents to use as seed conditions for
+    choosing new children. As in any evolutionary algorithm,
+    high-performing parents are the most desirable seeds. But to keep
+    from getting trapped in local patterns or weirdly well-performing
+    conditions, introduce some randomness into the process. Parents
+    are chosen by a performance-weighted random selection.
+
+    `greediness`: a parameter that controls how heavily the algorithm
+        leans toward choosing the highest performing condition. At
+        `greediness = -inf`, the process is a roll of the dice
+        amongst all the options, regardless
+        of performance. At `greediness = +inf` it is winner-take-all.
+        At `greediness = 0`, selection is weighted proportionally, based on
+        how low the error is relative to the others in the list.
+        This parameter isn't currently exposed at the top level,
+        but if it proves useful, I'll change that.
+    """
+    parents: CondList = [{}]
+
+    # Conditions still being evaluated won't have errors associated
+    # with them yet. Find the conditions that have.
+    evaluated_conditions: CondList = [
+        cond for cond in conditions if "error" in cond
+    ]
+
+    # If no potential parents to consider yet, return an empty list.
+    if len(evaluated_conditions) == 0:
+        return parents
+
+    # If the pool of potential parents is small, return them all.
+    if len(evaluated_conditions) < n_parents:
+        return evaluated_conditions
+
+    # If the pool of potential parents is large enough, choose some
+    # of the most promising.
+    error_list: list[float] = [cond["error"] for cond in evaluated_conditions]
+
+    errors: Any = np.array(error_list)
+
+    i_parents = low_biased_choice(n_parents, errors, greediness=greediness)
+    parents = [evaluated_conditions[i] for i in i_parents]
+
+    return parents
+
+
+def choose_children(
+    conditions: CondList,
+    condition_grid: CondGrid,
+    parent: Cond,
+    param: str,
+    n_children_max: int = 3,
+) -> bool:
+    """
+    Create a set of child conditions, a parent condition.
+    This expands the starting condition `parent` along
+    a single parameter `param`.
+
+    `n_children_max`: the target number of child conditions to collect.
+    The algorithm will attempt to add this many previously unevaluated
+    conditions to the list. It will add no more, but may add fewer.
+
+    `returns`: was the adding process successful? Was at least one new child
+    added to the list?
+    """
+    success: bool = False
+    vals: CondList = list(condition_grid[param])
+
+    # The parent condition doesn't need to be considered.
+    vals.remove(parent[param])
+    # Randomly select which child candidates to test.
+    random.shuffle(vals)
+
+    n_children: int = 0
+    for val in vals:
+        new_cond: Cond = copy.deepcopy(parent)
+        new_cond[param] = val
+        if not contains_condition(conditions, new_cond):
+            conditions.append(new_cond)
+            success = True
+            n_children += 1
+        if n_children >= n_children_max:
+            break
+
+    return success
+
+
+def optimization_loop_parallel(
+    condition_grid: CondGrid,
     evaluate: Callable[[Cond], float],
     n_iter: int,
     n_proc: int,
@@ -168,229 +407,38 @@ def _optimization_loop_parallel(
     it is memory-limited. It's worth monitoring your computer's
     resources while running this.
     """
-    best_error: int = 1e10
-    best_condition: Cond | None = None
-    condition_history: CondList = []
-    results: list[Cond, AsyncResult] = []
+    best_error: float = 1e10
+    best_condition: Cond = {}
+    conditions: CondList = []
+
     with Pool(processes=n_proc) as pool:
-        for condition: Cond in _generate_conditions(conditions, n_iter):
+        n_active_jobs = 0
+        for i_condition in generate_conditions(
+            conditions, condition_grid, n_iter
+        ):
+            condition: Cond = conditions[i_condition]
             if verbose:
                 print("    Evaluating condition", condition)
 
-            error_placeholder: AsyncResult = pool.apply_async(
+            condition["error_placeholder"] = pool.apply_async(
                 evaluate, (), condition
             )
-            results.append((condition, error_placeholder))
+            n_active_jobs += 1
 
-            if len(results) > n_proc:
-                (
-                    res_condition: Cond,
-                    res_placeholder: AsyncResult,
-                ) = results.pop(0)
-                error: float = res_placeholder.get()
-                res_condition["error"] = error
-                condition_history.append(res_condition)
-                rep.results_dict_list_to_csv(condition_history, report_path)
+            if n_active_jobs >= n_proc:
+                error: float = condition["error_placeholder"].get()
+                condition["error"] = error
+                n_active_jobs -= 1
+                del condition["error_placeholder"]
 
+                # Keep track of the best-so-far answer.
                 if error < best_error:
                     best_error = error
                     best_condition = condition
                 if verbose:
-                    results_so_far = rep.results_csv_to_dict_list(
-                        report_filename
-                    )
-                    rep.progress_report(results_so_far, report_plot_path)
-    results_so_far = rep.results_csv_to_dict_list(report_path)
-    rep.progress_report(results_so_far, report_plot_path)
+                    progress_report(conditions, report_plot_path)
+
+                condition_list_to_csv(conditions, report_path)
+
+    progress_report(conditions, report_plot_path)
     return best_error, best_condition
-
-
-def _generate_conditions(
-    conditions: CondSet,
-    n_iter: int,
-) -> Iterator[Cond]:
-    """
-    Core logic for the optimizer.
-    Decide which combination of values to try next.
-    Selection is random, but weighted heavily toward the most successful
-    conditions seen so far.
-    New conditions are generated until either
-        - `n_iter`, the maximum number of iterations is reached
-        - all possibile combinations of valid hyperparameters have been tried
-        - or the user forcible stops the run.
-
-    One hyperparameter (direction) is explored at a time.
-    The order in which the hyperparameters are explored (the direction set)
-    is random.
-    """
-    condition_names: list[str] = list(conditions.keys())
-    np.random.shuffle(condition_names)
-
-    conditions_evaluated: list[Cond] = []
-    conditions_with_scores: list[Cond] = []
-    children_to_evaluate: list[Cond] = []
-
-    # Before starting in, how many random points to check.
-    # Randomly seeding a few of these across the hyperparameter space
-    # helps prevent getting stuck in a "bad luck" initial condition.
-    n_initial_random_conditions: int = 2 * len(condition_names)
-    for _ in range(n_initial_random_conditions):
-        children_to_evaluate.append(get_random_condition(conditions))
-
-    # How many parent conditions to try finding children for (and fail)
-    # before declaring the parameter space sufficiently explored.
-    # Because an exhaustive list of conditions is never generated,
-    # there's no way for the algorithm to be certain when it has explored
-    # it completely. This number of attempts is intended to establish
-    # with reasonable confidence that the space is reasonably well explored.
-    n_parents_to_try: int = 2 * len(condition_names)
-
-    for _ in range(n_iter):
-        # It the hopper has run out of candidates, collect a few more.
-        if len(children_to_evaluate) == 0:
-            try:
-                _choose_more_children_to_evaluate(children_to_evaluate)
-            except StopIteration:
-                return
-
-        child: Cond = children_to_evaluate.pop()
-
-        Can I fold conditions_evaluated and conditions_with scores into one variable?
-        # Keeping a copy of child condition means that it remains unmodified.
-        # It's useful for checking whether a condition has been tested
-        # already.
-        conditions_evaluated.append(copy.deepcopy(child))
-
-        # Keeping the original object is helpful too. We know that
-        # it will have the evaluation error appended to it.
-        # We can use it for determining which point to expand.
-        conditions_with_scores.append(child)
-
-        yield child
-
-def _choose_more_children_to_evaluate(children_to_evaluate):
-    """
-    Once the `children_to_evaluate` queue is empty, this method
-    repopulates it.
-
-    The fraction of a hyperparameter's values that are considered
-    as potential children
-    controlled by `expansion_fraction`.
-    When enumerating the values of a parameter,
-    approximately what fraction of all of its
-    values to consider for children.
-    expansion_fraction = 0.3
-    """
-    parents = _choose_parents(n_parents_to_try)
-
-    # Handle the case where things are still getting started
-    # and there aren't enough evaluated points to choose parents.
-    if parents is None:
-        for _ in range(n_parents_to_try):
-            children_to_evaluate.append(
-                get_random_condition(conditions)
-            )
-        return
-
-    for parent in parents:
-        condition_names.insert(0, condition_names.pop())
-        for condition_name in condition_names:
-            children_to_evaluate += _choose_children_from_param(
-                parent, condition_name
-            )
-            if len(children_to_evaluate) > 0:
-                return
-    # If it gets this far it means that there are no lines radiating
-    # from this point that haven't yet been explored.
-    # The algorithm is done.
-    raise StopIteration
-
-
-def _choose_parents(n_parents: int) -> list[Cond]:
-    error_list: list[float] = []
-
-    # Pull out all the errors that have been generated so far.
-    # Conditions still being evaluated won't have errors associated
-    # with them yet. Ignore these and move on.
-    candidates: list[Cond] = [cond for cond in conditions_with_scores if "error" in cond]
-
-    # No parents to consider just yet.
-    if len(candidates) < 2:
-        return None
-
-    error_list: list[float] = [cond["error"] for cond in candidates]
-
-    errors: Any = np.array(error_list)
-    parents: list[Cond] = []
-
-    # Assign a selection_weight to each condition,
-    # based on the error score (or loss)
-    # associated with it. We want to choose a low error condition
-    # as a parent, but it doesn't have to be the lowest. We'll
-    # randomly choose one, giving strong preference to conditions
-    # with lower errors.
-    # The lowest error will have a selection_weight of 1.
-    # The highest error
-    # will have a selection_weight of 0. An error halfway in between will
-    # have a selection_weight of .5**2 = .25
-    eps: float = 1e-17  # to avoid division by zero
-    selection_weights: Any = (
-        (np.max(errors) - errors + eps)
-        / (np.max(errors) - np.min(errors) + eps)
-    ) ** 2
-
-    # Normalized, stacked selection weights, such that choosing
-    # a random number between 0 and 1 comes up associated with
-    # exactly one option
-    norm_weight_stack: Any = (
-        np.cumsum(selection_weights) /
-        np.sum(selection_weights)
-    )
-
-    for _ in range(n_parents):
-        # Find which option in the stack matches the random number
-        i_cond: int = np.where(norm_weight_stack > np.random.uniform())[0][0]
-        parents.append(
-            copy.deepcopy(conditions_with_scores[int(i_cond)])
-        )
-
-    # TODO this seems unnecessary. Assume deterministic evaluation for now.
-    # Strip the score information from the chosen parents.
-    for parent in parents:
-        try:
-            del parent["error"]
-        except KeyError:
-            pass
-    return parents
-
-
-def _choose_children_from_param(
-    parent,
-    param,
-    conditions,
-    conditions_evaluated,
-    expansion_fraction: float = 0.3,
-):
-    """
-    Create a set of conditions for each
-    value. This expands the starting condition `cond` along
-    a single parameter `param`.
-    """
-    new_children_to_evaluate = []
-    vals = conditions[param]
-    for val in vals:
-        new_cond = copy.deepcopy(parent)
-        new_cond[param] = val
-        if new_cond not in conditions_evaluated:
-            new_children_to_evaluate.append(new_cond)
-
-        # Randomly select just a few of the candidate children.
-        np.random.shuffle(new_children_to_evaluate)
-        n_children_max = int(
-            np.ceil(len(list(vals)) * expansion_fraction)
-        )
-        if len(new_children_to_evaluate) > n_children_max:
-            new_children_to_evaluate = new_children_to_evaluate[
-                :n_children_max
-            ]
-    return new_children_to_evaluate
