@@ -13,7 +13,7 @@ so long to train and test, and since the hyperparameters can have non-intuitive,
 strongly non-linear, and interactive effects.
 
 
-![Animated demo of Redsho in operation](https://github.com/brohrer/redsho/blob/main/examples/sinc/landing_page_demo.gif?raw=true)
+![Animated demo of Redsho in operation](https://github.com/brohrer/redsho/blob/main/examples/sinc/splash.gif?raw=true)
 
 Redsho (pictured in action above), an evolutionary search algorithm variant
 inspired by direction set methods like 
