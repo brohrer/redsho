@@ -1,16 +1,19 @@
 # redsho
-
 Robust Evolutionary Direction Set Hyperparameter Optimizer
 
 Redsho is a discrete optimizer, which means that
 it works with parameters that can
-only take on a certain set of values. This works well for evaluating neural
-networks and other large and complex models, since they take so long to
-train and test, and since the hyperparameters can have non-intuitive,
+only take on a certain set of values. This works well for evaluating
+machine learning models with a collection of hyperparameters that
+influence their behavior, such as gradient boosted decision trees
+and all manner of neural networks. It's also useful for evaluting complex
+systems where entire algorithmic blocks can be swapped in for each other.
+It's intended especially for larger models and systems since they take
+so long to train and test, and since the hyperparameters can have non-intuitive,
 strongly non-linear, and interactive effects.
 
 
-![Animated demo of Redsho in operation](https://github.com/brohrer/redsho/blob/main/landing_page_demo.gif?raw=true)
+![Animated demo of Redsho in operation](https://github.com/brohrer/redsho/blob/main/examples/sinc/landing_page_demo.gif?raw=true)
 
 Redsho (pictured in action above), an evolutionary search algorithm variant
 inspired by direction set methods like 
@@ -20,25 +23,18 @@ Here is [a detailed description of how it works](https://brohrer.github.io/evopo
 
 ## Installation
 
-It's on PyPI, so install with
-
-```bash
-pip install redsho
-```
-
-or as part of a uv environment
+It's on PyPI, so install as part of a uv environment (recommended)
 
 ```bash
 uv add redsho
 ```
 
-## Run the demo
+or via pip
 
-In a python script
-
-```python3
-import redsho.demo
+```bash
+pip install redsho
 ```
+
 
 ## Usage
 
@@ -71,18 +67,21 @@ lowest_error, best_parameters = optimize(evaluate, values)
 where `error` is the lowest error achieved, `best_parameters` is the collection
 of parameter values that achieved iti
 
+## Examples
 
-## Parallelization
+There are some standalone examples of how redsho can be used in the repo's
+[examples/](https://codeberg.org/brohrer/redsho/src/branch/main/examples/)
+directory.
 
-Redsho can seamlessly take advantage of multiple processor systems.
-Use the `n_processors` argument to stipulate how many parallel processes
-to run at once. Heads up - choosing a number that's too high will bog down
-your machine. What constitutes "too high" varies by machine and optimization
-problem, so experiment a bit.
+- Finding the maximum of
+[a *sinc* function](https://codeberg.org/brohrer/redsho/src/branch/main/examples/sinc/README.md)
 
-```python3
-lowest_error, best_parameters = optimize(evaluate, values, n_processors=7)
-```
+
+## Developing
+
+If you want to extend or tweak the approach, then
+[DEVELOPING.md](https://codeberg.org/brohrer/redsho/src/branch/main/DEVELOPING.md)
+is for you.
 
 
 ### Some terminology
