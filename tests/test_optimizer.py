@@ -1,17 +1,6 @@
 import copy
 
 import pytest
-
-from redsho.helpers.helpers import (
-    CondList,
-)
-from redsho.optimizer import (
-    choose_children,
-    choose_more_conditions,
-    choose_parents,
-    generate_conditions,
-)
-
 from common import (
     add,
     default_condition_grid,
@@ -22,6 +11,16 @@ from common import (
     full_param,
     small_condition_grid,
     small_condition_list_full,
+)
+
+from redsho.helpers.helpers import (
+    CondList,
+)
+from redsho.optimizer import (
+    choose_children,
+    choose_more_conditions,
+    choose_parents,
+    generate_conditions,
 )
 
 

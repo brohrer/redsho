@@ -4,11 +4,10 @@ combination of parameters for an arbitrary evaluation function.
 Built to help find good hyperparameter sets for machine learning models.
 """
 
-from collections.abc import Callable, Iterator
 import copy
-from multiprocessing import Pool
 import os
 import random
+from collections.abc import Callable, Iterator
 from typing import Any
 
 import numpy as np
@@ -106,46 +105,14 @@ def optimize(
         print(f"    in {report_path}")
         print()
 
-    # Determine the number of logical cores available. This is
-    # typically twice the number of physical cores.
-    # start from.
-    # This expression first checks for the number of cores that this
-    # process has permission to access. (This function only became
-    # available in Python 3.13.)
-    # If that fails or returns None, checks for the total number of cores.
-    # If that returns None, falls back to a safe value (1).
-    try:
-        n_logical_cores = (
-            os.process_cpu_count()  # type: ignore
-            or os.cpu_count()
-            or 1
-        )
-    except AttributeError:
-        n_logical_cores = os.cpu_count() or 1
-
-    # Maxes out at one less than the number of cores to keep from
-    # bogging down the other programs running on the machine.
-    n_processors = min(max(n_processors, 1), n_logical_cores - 1)
-
-    if n_processors > 1:
-        best_error, best_condition = optimization_loop_parallel(
-            condition_grid,
-            evaluate,
-            n_iter,
-            n_processors,
-            report_path,
-            report_plot_path,
-            verbose,
-        )
-    else:
-        best_error, best_condition = optimization_loop(
-            condition_grid,
-            evaluate,
-            n_iter,
-            report_path,
-            report_plot_path,
-            verbose,
-        )
+    best_error, best_condition = optimization_loop(
+        condition_grid,
+        evaluate,
+        n_iter,
+        report_path,
+        report_plot_path,
+        verbose,
+    )
 
     return best_error, best_condition
 
@@ -386,59 +353,3 @@ def choose_children(
             break
 
     return success
-
-
-def optimization_loop_parallel(
-    condition_grid: CondGrid,
-    evaluate: Callable[[Cond], float],
-    n_iter: int,
-    n_proc: int,
-    report_path: str,
-    report_plot_path: str,
-    verbose: bool,
-) -> tuple[float, Cond]:
-    """
-    Farm out the evaluation of individual conditions to `multiprocessing.Pool`
-    processes. Using multiprocessing instead of threading allows it to
-    make use of several processors at once, rather than just sharing
-    the one. It effectively allows it to take over your whole computer.
-
-    This will speed up optimization if it is CPU-limited, but not if
-    it is memory-limited. It's worth monitoring your computer's
-    resources while running this.
-    """
-    best_error: float = 1e10
-    best_condition: Cond = {}
-    conditions: CondList = []
-
-    with Pool(processes=n_proc) as pool:
-        n_active_jobs = 0
-        for i_condition in generate_conditions(
-            conditions, condition_grid, n_iter
-        ):
-            condition: Cond = conditions[i_condition]
-            if verbose:
-                print("    Evaluating condition", condition)
-
-            condition["error_placeholder"] = pool.apply_async(
-                evaluate, (), condition
-            )
-            n_active_jobs += 1
-
-            if n_active_jobs >= n_proc:
-                error: float = condition["error_placeholder"].get()
-                condition["error"] = error
-                n_active_jobs -= 1
-                del condition["error_placeholder"]
-
-                # Keep track of the best-so-far answer.
-                if error < best_error:
-                    best_error = error
-                    best_condition = condition
-                if verbose:
-                    progress_report(conditions, report_plot_path)
-
-                condition_list_to_csv(conditions, report_path)
-
-    progress_report(conditions, report_plot_path)
-    return best_error, best_condition

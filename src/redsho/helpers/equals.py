@@ -13,7 +13,7 @@ from redsho.helpers.helpers import (
 def is_condition(arg: Any) -> bool:
     if not isinstance(arg, dict):
         return False
-    for k in arg.keys():
+    for k in arg:
         if not isinstance(k, str):
             return False
     return True
