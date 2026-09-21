@@ -48,11 +48,14 @@ Start with an evaluation function that takes some hyperparameters as
 keyword arguments.
 
 ```python3
-def evaluate(a=None, b=None, c=None):
+def evaluate(*, a, b, c):
     return a * b**3 % c
 ```
 
-and a collection of values to try for each
+(the leading `*` tells Python that everything that follows is a required
+keyword argument)
+
+Build a collection of values to try for each parameter.
 
 ```python3
 values = {
@@ -62,7 +65,7 @@ values = {
 }
 ```
 
-call the optimizer
+Call the optimizer.
 
 ```python3
 from redsho.optimizer import optimize
@@ -71,7 +74,7 @@ lowest_error, best_parameters = optimize(evaluate, values)
 ```
 
 where `error` is the lowest error achieved, `best_parameters` is the collection
-of parameter values that achieved iti
+of parameter values that achieved it.
 
 ## Examples
 
@@ -93,7 +96,7 @@ is for you.
 - evolutionary: it randomly explores new options based on the most
     successful of its previous tries.
 - direction set: it alternates through its hyperparameters, exploring
-    by varying one at a time
+    by varying one parameter at a time
 - hyperparameter: in this context, any variable that has an influence
     on the result of the evaluation function. Also referred to as
     a direction or a dimension.
@@ -101,8 +104,8 @@ is for you.
     taken together, n hyperparameters form an n-dimensional space
 - condition: a full collection of hyperparameter names and one valid value
     for each. Each condition is a point in the hyperparameter space.
-- condition grid: the set of all conditions in the hyperparameter space
-    forms an irregular n-dimensional grid.
+- condition grid: the set of all conditions in the hyperparameter space.
+    Forms an irregularly-spaced n-dimensional grid.
 - evaluation function: pretty much anything that can take in a set of
     parameters and return a number that evaluates its performance.
     It can be a mathematical expression, a traditional machine learning
@@ -114,9 +117,10 @@ is for you.
     is trying to find the condition with the lowest error.
 - error landscape: picturing a two-dimensional hyperparameter space,
     the error can be imagined as the height of a mountainous landscape
-    in the space. This can be generalized to higher dimensions (but harder
-    to picture in your head).The goal of the algorithm is to find the bottom
-    of the lowest valley.
+    in an extra dimension of that space. This can be generalized to
+    higher dimensions
+    (harder to picture in your head, but the math doesn't mind).
+    The goal of the algorithm is to find the bottom of the lowest valley.
 - parent: a condition chosen as a point from which to select the next
     generation of conditions to evaluate. The fact that this is
     a direction set method means that one of the parent's parameters
@@ -128,7 +132,7 @@ is for you.
     same answer every time for the same set of hyperparameters. If this
     is not the case for your application you can approximate a stochastic
     solution by running it several times and looking for a grouping in
-    the solutions found.
+    the winning conditions.
 - assumes discrete valued parameters. Even if parameters are continuous,
     the way you feed them in forces you to choose a handful of specific
     values to try.
@@ -140,13 +144,13 @@ is for you.
     smoothness, like Bayesian or Gradient-based hyperparameter optimization.
     But it usually takes fewer samples than random or exhaustive grid search.
     (See https://en.wikipedia.org/wiki/Hyperparameter_optimization )
+    And, on average, it settles into a "pretty good" solution rather quickly.
 - does not assume that hyperparameter values are numerical.
     This opens up Redsho to handling categorical arguments, such as
     booleans or strings. It can also be used with string arguments
-    for a Python function, or even whole functions or classes.
+    for a Python function, or even whole functions, classes, or subsystems.
     Any valid Python object can be used as a hyperparameter value.
     This is helpful when evaluating models that have options such as
     `method` which can be assigned any one of several strings or
     arguments that accept functions, similar to how to
     SciPy's `optimize.minimize` does.
-

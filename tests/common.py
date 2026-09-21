@@ -61,10 +61,11 @@ default_report_plot_path: str = os.path.join(
 
 
 def default_evaluate(
-    p0: int = None,  # type: ignore 
-    p1: float = None,  # type: ignore 
-    p2: str = None,  # type: ignore 
-    p3: Callable = None,  # type: ignore 
+    *,  # ensures everything after will be a required keyword argument
+    p0: int,
+    p1: float,
+    p2: str,
+    p3: Callable,
 ) -> float:
 
     p0f: float = float(p0)

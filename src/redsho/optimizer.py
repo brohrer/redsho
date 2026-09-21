@@ -28,7 +28,7 @@ from redsho.helpers.reports import (
 
 def optimize(
     condition_grid: CondGrid,
-    evaluate: Callable[[], float],
+    evaluate: Callable[..., float],
     n_iter: int = int(1e3),
     report_dir: str = "reports",
     report_filename: str = "optimizer_results.csv",
@@ -125,7 +125,7 @@ def optimize(
 
 def optimization_loop(
     condition_grid: CondGrid,
-    evaluate: Callable[[], float],
+    evaluate: Callable[..., float],
     n_iter: int,
     report_path: str,
     report_plot_path: str,
@@ -159,8 +159,9 @@ def optimization_loop(
     for i_condition in generate_conditions(conditions, condition_grid, n_iter):
         condition: Cond = conditions[i_condition]
         if verbose:
-            print("    Evaluating condition", condition)
+            print("    Evaluating condition", i_condition, condition)
         error: float = evaluate(**condition)
+
         condition["error"] = error
 
         # Keep track of the best-so-far answer.
@@ -350,6 +351,11 @@ def choose_children(
     n_children: int = 0
     for val in vals:
         new_cond: Cond = copy.deepcopy(parent)
+        try:
+            del new_cond["error"]
+        except KeyError:
+            pass
+
         new_cond[param] = val
         if not contains_condition(conditions, new_cond):
             conditions.append(new_cond)
