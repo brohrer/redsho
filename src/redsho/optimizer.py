@@ -28,9 +28,8 @@ from redsho.helpers.reports import (
 
 def optimize(
     condition_grid: CondGrid,
-    evaluate: Callable[[Cond], float],
+    evaluate: Callable[[], float],
     n_iter: int = int(1e3),
-    n_processors: int = 1,
     report_dir: str = "reports",
     report_filename: str = "optimizer_results.csv",
     report_plot_filename: str = "optimizer_results.png",
@@ -49,16 +48,16 @@ def optimize(
         one for each key in the `conditions` dict.
 
     `n_iter`: the number of conditions to evaluate before giving up.
-        By default this is a large number and
+        If this is a large number, it
         will likely result in an exhaustive grid search. Bring it down
         lower if you don't feel like waiting that long.
 
-    `n_processors`: the number of processors to recruit for running
-       multiple condition evaluations in parallel.
-       `n_processors = 1` (default) will keep everything running serially
-       on one processor. Limited to the total number of CPU cores on the
-       machine, minus one, in order to avoid freezing things up.
+    `report_dir`: the directory that will contain results resports,
+        relative to to script running the optimization.
 
+    `report_filename`: filename of the results .csv.
+
+    `report_plot_filename`: filename of the error-by-iteration plot
     """
     # Make sure the inputs are valid
     assert isinstance(condition_grid, dict), (
@@ -87,8 +86,6 @@ def optimize(
 
     n_iter = int(n_iter)
     assert isinstance(n_iter, int), "n_iter must be an int."
-    n_processors = int(n_processors)
-    assert isinstance(n_processors, int), "n_processors must be an int."
 
     report_path: str = os.path.join(report_dir, report_filename)
     report_plot_path: str = os.path.join(report_dir, report_plot_filename)
@@ -114,12 +111,21 @@ def optimize(
         verbose,
     )
 
+    if verbose:
+        print()
+        print("All done!")
+        print(f"    The lowest error found was {best_error} with parameters")
+        print(f"    {best_condition}")
+        print(f"    The progress plot is in {report_plot_path}")
+        print(f"    The full results log is in {report_path}")
+        print()
+
     return best_error, best_condition
 
 
 def optimization_loop(
     condition_grid: CondGrid,
-    evaluate: Callable[[Cond], float],
+    evaluate: Callable[[], float],
     n_iter: int,
     report_path: str,
     report_plot_path: str,
@@ -154,7 +160,7 @@ def optimization_loop(
         condition: Cond = conditions[i_condition]
         if verbose:
             print("    Evaluating condition", condition)
-        error: float = evaluate(condition)
+        error: float = evaluate(**condition)
         condition["error"] = error
 
         # Keep track of the best-so-far answer.

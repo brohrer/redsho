@@ -78,9 +78,9 @@ to copy/paste implementations from.
 The run times on these can be quite long, and they are set up to be
 run deliberately and one at a time.
 
-```bash
-uv run examples/<example_name>/run.py
-```
+Examples are collected in the
+[`redsho-examples` repo](https://codeberg.org/brohrer/redsho-examples)
+and each comes with its own documentation.
 
 ### Writing tests
 
@@ -128,5 +128,6 @@ after doing all the above
 
 1. Increment the version number in `pyproject.toml` appropriately,
     as needed by semantic versioning: `<major-change>.<minor-change>.<bugfix>`
-2. `uv build`
-3. `uv publish --token <pypi_token>`
+2. Carefully update the `README.md`
+3. `uv build`
+4. `uv publish --token <pypi_token>`

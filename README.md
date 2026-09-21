@@ -12,14 +12,21 @@ It's intended especially for larger models and systems since they take
 so long to train and test, and since the hyperparameters can have non-intuitive,
 strongly non-linear, and interactive effects.
 
-
-![Animated demo of Redsho in operation](https://github.com/brohrer/redsho/blob/main/examples/sinc/splash.gif?raw=true)
-
-Redsho (pictured in action above), an evolutionary search algorithm variant
+Redsho is an evolutionary search algorithm variant
 inspired by direction set methods like 
 [Powell's method](https://en.wikipedia.org/wiki/Powell%27s_method), so much
 so that it was originally called Evolutionary Powell's method.
 Here is [a detailed description of how it works](https://brohrer.github.io/evopowell.html).
+
+![Animated demo of Redsho in operation on a 2D variant of the sinc function
+](https://github.com/brohrer/redsho-examples/blob/main/sinc/splash.gif?raw=true)
+
+This demo illustrates how redsho
+
+1. Peppers the parameter space with a few starting points
+2. Chooses neighboring points in varying directions to test
+3. Leans toward neighbors of the highest performing points, but
+4. Also explores more broadly
 
 ## Installation
 
@@ -34,7 +41,6 @@ or via pip
 ```bash
 pip install redsho
 ```
-
 
 ## Usage
 
@@ -69,13 +75,10 @@ of parameter values that achieved iti
 
 ## Examples
 
-There are some standalone examples of how redsho can be used in the repo's
-[examples/](https://codeberg.org/brohrer/redsho/src/branch/main/examples/)
-directory.
-
-- Finding the maximum of
-[a *sinc* function](https://codeberg.org/brohrer/redsho/src/branch/main/examples/sinc/README.md)
-
+There are some standalone examples of how redsho can be used in a
+separate repo called
+[redsho-examples](https://codeberg.org/brohrer/redsho-examples/src/branch/main/README.md)
+, including finding the maximum of a *sinc* function.
 
 ## Developing
 

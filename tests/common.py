@@ -60,11 +60,12 @@ default_report_plot_path: str = os.path.join(
 )
 
 
-def default_evaluate(condition: Cond) -> float:
-    p0: int = condition["p0"]
-    p1: float = condition["p1"]
-    p2: str = condition["p2"]
-    p3: Callable = condition["p3"]
+def default_evaluate(
+    p0: int = None,  # type: ignore 
+    p1: float = None,  # type: ignore 
+    p2: str = None,  # type: ignore 
+    p3: Callable = None,  # type: ignore 
+) -> float:
 
     p0f: float = float(p0)
     p2a: float = 0

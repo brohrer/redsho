@@ -1,6 +1,6 @@
 [project]
 name = "redsho"
-version = "0.2.1"
+version = "0.3.0"
 description = "Robust evolutionary direction set hyperparameter optimizer"
 readme = "README.md"
 authors = [
